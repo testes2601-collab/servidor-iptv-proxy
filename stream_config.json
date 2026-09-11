@@ -1,0 +1,114 @@
+{
+  "updated_at": "2026-09-11T03:40:00Z",
+  "total_canais": 4,
+  "canais": {
+    "premiere1": {
+      "id_slug": "premiere1",
+      "nome": "Premiere 1 FHD",
+      "categoria": "ESPORTES - PREMIERE",
+      "tvg_id": "Premiere1.br",
+      "logo": "https://i.imgur.com/8Q9Z3v1.png",
+      "fontes": [
+        {
+          "prioridade": 1,
+          "nome_servidor": "meusrv_top_1",
+          "host": "http://meusrv.top:80",
+          "user": "955823677",
+          "pass": "798597634",
+          "stream_id": "89123",
+          "validade": "2027-04-27"
+        },
+        {
+          "prioridade": 2,
+          "nome_servidor": "ono_79",
+          "host": "http://79.127.243.145:80",
+          "user": "723015",
+          "pass": "VfGrmD",
+          "stream_id": "89123",
+          "validade": "2026-12-01"
+        },
+        {
+          "prioridade": 3,
+          "nome_servidor": "assistirja_1",
+          "host": "http://assistirja.com:80",
+          "user": "p2WzY2",
+          "pass": "WUr5m3",
+          "stream_id": "89123",
+          "validade": "2027-01-11"
+        },
+        {
+          "prioridade": 4,
+          "nome_servidor": "reserva_biturl",
+          "host": "http://play.biturl.vip:80",
+          "user": "5181603291",
+          "pass": "m23bm8a1nup",
+          "stream_id": "99812",
+          "validade": "2029-07-17"
+        }
+      ]
+    },
+    "sportv1": {
+      "id_slug": "sportv1",
+      "nome": "SportV 1 FHD",
+      "categoria": "ESPORTES - SPORTV",
+      "tvg_id": "Sportv1.br",
+      "logo": "https://i.imgur.com/sportv1.png",
+      "fontes": [
+        {
+          "prioridade": 1,
+          "nome_servidor": "meusrv_top_1",
+          "host": "http://meusrv.top:80",
+          "user": "955823677",
+          "pass": "798597634",
+          "stream_id": "12045",
+          "validade": "2027-04-27"
+        },
+        {
+          "prioridade": 2,
+          "nome_servidor": "assistirja_1",
+          "host": "http://assistirja.com:80",
+          "user": "p2WzY2",
+          "pass": "WUr5m3",
+          "stream_id": "12045",
+          "validade": "2027-01-11"
+        }
+      ]
+    },
+    "espn1": {
+      "id_slug": "espn1",
+      "nome": "ESPN 1 FHD",
+      "categoria": "ESPORTES - ESPN",
+      "tvg_id": "Espn1.br",
+      "logo": "https://i.imgur.com/espn1.png",
+      "fontes": [
+        {
+          "prioridade": 1,
+          "nome_servidor": "meusrv_top_1",
+          "host": "http://meusrv.top:80",
+          "user": "955823677",
+          "pass": "798597634",
+          "stream_id": "14088",
+          "validade": "2027-04-27"
+        }
+      ]
+    },
+    "globo_sp": {
+      "id_slug": "globo_sp",
+      "nome": "Globo SP FHD",
+      "categoria": "VARIEDADES - ABERTOS",
+      "tvg_id": "GloboSP.br",
+      "logo": "https://i.imgur.com/globosp.png",
+      "fontes": [
+        {
+          "prioridade": 1,
+          "nome_servidor": "meusrv_top_1",
+          "host": "http://meusrv.top:80",
+          "user": "955823677",
+          "pass": "798597634",
+          "stream_id": "10022",
+          "validade": "2027-04-27"
+        }
+      ]
+    }
+  }
+}
