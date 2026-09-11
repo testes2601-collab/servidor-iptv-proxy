@@ -3,42 +3,40 @@ import os
 import re
 import urllib3
 import requests
-from flask import Flask, Response, request
+from flask import Flask, Response, request, redirect
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# Pool de Servidores M3U com os servidores HTTP 200 confirmados no topo
+# Pool de contas extraídas dos seus arquivos .txt
 POOL_CONTAS = [
-    # Servidores com retorno HTTP 200 direto e funcional (sem redirecionamentos 302 para Cloudflare)
+    {"nome": "meusrv_1", "host": "http://meusrv.top:80", "user": "955823677", "pass": "798597634"},
+    {"nome": "meusrv_2", "host": "http://meusrv.top:80", "user": "74468590", "pass": "448420959"},
     {"nome": "ono_1", "host": "http://79.127.243.145:80", "user": "723015", "pass": "VfGrmD"},
-    {"nome": "vector_1", "host": "http://61701-vector.cdn-o2.me:80", "user": "4df74cf07e", "pass": "9d49be6b44bc"},
     {"nome": "ip103_1", "host": "http://103.176.90.186:80", "user": "e0828d9135", "pass": "e91802270546"},
-    {"nome": "xyz332_1", "host": "http://332nr7hbfu.xyz:80", "user": "bf99kmWd", "pass": "sGqE59"},
-    {"nome": "xyz332_2", "host": "http://332nr7hbfu.xyz:80", "user": "constancio79", "pass": "Wagner@79"},
-    {"nome": "given_1", "host": "http://11359-given.cdn-o2.me:80", "user": "4af01daf4f", "pass": "7e3498490571"},
-    {"nome": "fftq_1", "host": "http://49fftq.live:80", "user": "WellgtonSilva35", "pass": "991DNEubv"},
-    {"nome": "z2mu_1", "host": "http://54z2mu.pro:80", "user": "jT63beuY", "pass": "F11Gkd"},
-    {"nome": "horizon_1", "host": "http://horizonmult.sbs:80", "user": "cmguxxz8y001", "pass": "51993101526"},
-    {"nome": "ono_2", "host": "http://85.137.49.157.dyn.user.ono.com:80", "user": "Otaviodeledove", "pass": "9Dh5R8uAu5"}
+    {"nome": "xyz332_1", "host": "http://332nr7hbfu.xyz:80", "user": "988060", "pass": "zd7YEw"},
+    {"nome": "vector_1", "host": "http://61701-vector.cdn-o2.me:80", "user": "4df74cf07e", "pass": "9d49be6b44bc"},
+    {"nome": "biturl_1", "host": "http://play.biturl.vip:80", "user": "5181603291", "pass": "m23bm8a1nup"}
 ]
 
-HEADERS = {
-    "User-Agent": "IPTVSmarters/3.0.0 (Linux; Android 10) VLC/3.0.12",
-    "Accept": "*/*"
+HEADERS_PLAYER = {
+    "User-Agent": "TiviMate/4.6.1 (Android TV)",
+    "Accept": "*/*",
+    "Connection": "keep-alive"
 }
 
-CACHE_STREAM = {}
+# Cache de ID do Premiere para não sobrecarregar o servidor
+CACHE_PREMIERE = {"id_map": {}, "timestamp": 0}
 
-def obter_stream_id_premiere(host, user, password):
-    cache_key = f"{host}_{user}"
-    if cache_key in CACHE_STREAM:
-        return CACHE_STREAM[cache_key]
-
+def buscar_stream_id_real(host, user, password):
+    """
+    Busca o ID numérico exato do canal Premiere na playlist M3U da conta.
+    Evita usar 'premiere1.ts' genérico que aciona o erro 404/Cloudflare.
+    """
     try:
         url_m3u = f"{host}/get.php?username={user}&password={password}&type=m3u_plus"
-        res = requests.get(url_m3u, headers=HEADERS, timeout=4, verify=False)
+        res = requests.get(url_m3u, headers=HEADERS_PLAYER, timeout=5, verify=False)
         if res.status_code == 200 and "#EXTM3U" in res.text:
             linhas = res.text.splitlines()
             for i, linha in enumerate(linhas):
@@ -46,81 +44,32 @@ def obter_stream_id_premiere(host, user, password):
                     if i + 1 < len(linhas) and not linhas[i+1].startswith("#"):
                         match = re.search(r'/(\d+)\.(ts|m3u8)', linhas[i+1])
                         if match:
-                            sid = match.group(1)
-                            CACHE_STREAM[cache_key] = sid
-                            return sid
-    except Exception:
-        pass
-    return "premiere1"
-
-def e_fluxo_video_valido(chunk):
-    if not chunk:
-        return False
-    amostra = chunk[:1000].lower()
-    # Filtro rigoroso anti-Cloudflare e anti-HTML
-    bloqueios = [
-        b"cloudflare", b"cfl.re", b"restricted", b"terms of service",
-        b"<html", b"<!doctype", b"stream not found", b"access denied", b"error"
-    ]
-    for b in bloqueios:
-        if b in amostra:
-            return False
-    return True
-
-def tentar_transmitir_conta(conta):
-    stream_id = obter_stream_id_premiere(conta["host"], conta["user"], conta["pass"])
-    target_url = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/{stream_id}.ts"
-    
-    try:
-        req = requests.get(target_url, headers=HEADERS, stream=True, timeout=5, verify=False)
-        
-        if req.status_code == 200:
-            iterador = req.iter_content(chunk_size=32768)
-            primeiro_chunk = next(iterador, None)
-            
-            if primeiro_chunk and e_fluxo_video_valido(primeiro_chunk):
-                def gerador():
-                    yield primeiro_chunk
-                    for chunk in iterador:
-                        if chunk:
-                            yield chunk
-                return gerador()
+                            return match.group(1)
     except Exception:
         pass
     return None
 
-def adicionar_cors(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    return response
+def obter_url_canal_valido():
+    """
+    Verifica qual servidor tem o canal ativo e retorna a URL direta.
+    """
+    for conta in POOL_CONTAS:
+        stream_id = buscar_stream_id_real(conta["host"], conta["user"], conta["pass"])
+        if not stream_id:
+            continue
+        
+        target_url = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/{stream_id}.ts"
+        try:
+            r = requests.head(target_url, headers=HEADERS_PLAYER, timeout=4, verify=False)
+            if r.status_code == 200:
+                return target_url
+        except Exception:
+            continue
+    return None
 
 @app.route("/")
 def home():
-    return "Servidor Proxy Premiere 1 - Pool Filtrado v16 Online!"
-
-@app.route("/debug")
-def debug():
-    relatorio = ["<h2>Status dos Servidores M3U (v16)</h2>"]
-    for conta in POOL_CONTAS:
-        try:
-            sid = obter_stream_id_premiere(conta["host"], conta["user"], conta["pass"])
-            url_test = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/{sid}.ts"
-            r = requests.get(url_test, headers=HEADERS, stream=True, timeout=4, verify=False)
-            
-            chunk = next(r.iter_content(chunk_size=1024), None)
-            if r.status_code == 200 and e_fluxo_video_valido(chunk):
-                status = f"<b style='color:green;'>ONLINE - VÍDEO OK (HTTP 200)</b>"
-            elif r.status_code == 302:
-                status = f"<b style='color:orange;'>REDIRECIONAMENTO (HTTP 302 - Ignorado)</b>"
-            else:
-                status = f"<b style='color:red;'>BLOQUEADO / CLOUDFLARE (HTTP {r.status_code})</b>"
-            
-            relatorio.append(f"• <b>{conta['nome']}</b> ({conta['host']}): {status}<br>")
-        except Exception as e:
-            relatorio.append(f"• <b>{conta['nome']}</b> ({conta['host']}): <b style='color:gray;'>OFFLINE ({e})</b><br>")
-            
-    return "".join(relatorio)
+    return "Servidor Proxy IPTV - Solução Burlar Cloudflare Ativa!"
 
 @app.route("/playlist.m3u")
 def playlist_m3u():
@@ -130,18 +79,20 @@ def playlist_m3u():
 {base_url}/live/premiere1.ts
 """
     resp = Response(m3u_content, content_type="application/x-mpegURL")
-    return adicionar_cors(resp)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 @app.route("/live/premiere1.ts")
 @app.route("/live/premiere.m3u8")
 def stream_premiere():
-    for conta in POOL_CONTAS:
-        fluxo = tentar_transmitir_conta(conta)
-        if fluxo:
-            resp = Response(fluxo, content_type="video/mp2t")
-            return adicionar_cors(resp)
-
-    return "Todos os servidores M3U estão temporariamente indisponíveis.", 503
+    # MÉTODO DE BYPASS: REDIRECIONAMENTO DIRETO (HTTP 302)
+    # Em vez do Render tentar baixar (o que a Cloudflare bloqueia por ser IP de nuvem),
+    # o Render envia a URL validada diretamente para a sua Smart TV abrir com o IP da sua casa.
+    url_direta = obter_url_canal_valido()
+    if url_direta:
+        return redirect(url_direta, code=302)
+    
+    return "Nenhum servidor no pool respondeu com sinal válido.", 503
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
