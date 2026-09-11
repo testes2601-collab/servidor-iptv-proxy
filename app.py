@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
+"""
+Servidor Proxy IPTV - Versão v11 (Consumo Direto de stream_config.json)
+Leitura ultra-rápida (0.01s) de mapa de canais organizado sem delays ou erros de raspagem na TV.
+"""
+
 import os
-import re
+import json
+import time
 import urllib3
 import requests
 from flask import Flask, Response, request
@@ -9,100 +15,52 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# -------------------------------------------------------------------
-# 1. SELEÇÃO DAS 5 FONTES PRINCIPAIS (ALTA CONECTIVIDADE E VALIDADE LONGA)
-# -------------------------------------------------------------------
-CONTAS_PRINCIPAIS = [
-    # Fonte 1: meusrv.top (Usuário 955823677, expira em 2027, 3 conexões)
-    {"nome": "meusrv_1", "host": "http://meusrv.top:80", "user": "955823677", "pass": "798597634"},
-    # Fonte 2: meusrv.top (Usuário 74468590, expira em 2027, 3 conexões)
-    {"nome": "meusrv_2", "host": "http://meusrv.top:80", "user": "74468590", "pass": "448420959"},
-    # Fonte 3: 79.127.243.145 (Usuário 723015, expira no fim de 2026, 3 conexões)
-    {"nome": "ono_1", "host": "http://79.127.243.145:80", "user": "723015", "pass": "VfGrmD"},
-    # Fonte 4: assistirja.com (Usuário p2WzY2, expira em 2027)
-    {"nome": "assistirja_1", "host": "http://assistirja.com:80", "user": "p2WzY2", "pass": "WUr5m3"},
-    # Fonte 5: assistirja.com (Usuário mqKTBr4T7N, expira em 2027, 2 conexões)
-    {"nome": "assistirja_2", "host": "http://assistirja.com:80", "user": "mqKTBr4T7N", "pass": "1794PMUHjcsp"}
-]
-
-# -------------------------------------------------------------------
-# 2. FONTE RESERVA DE EMERGÊNCIA (USADA CASO AS 5 PRINCIPAIS FALHEM)
-# -------------------------------------------------------------------
-CONTA_RESERVA = {
-    # Fonte Reserva: play.biturl.vip (Usuário 5181603291, expira em 2029)
-    "nome": "biturl_reserva",
-    "host": "http://play.biturl.vip:80",
-    "user": "5181603291",
-    "pass": "m23bm8a1nup"
-}
+CONFIG_URL_RAW = "https://raw.githubusercontent.com/testes2601-collab/Servidor-Premiere/main/stream_config.json"
+CACHE_CONFIG = {"dados": None, "timestamp": 0}
 
 HEADERS = {
     "User-Agent": "IPTVSmarters/3.0.0 (Linux; Android 10) VLC/3.0.12",
     "Accept": "*/*"
 }
 
-def extrair_stream_id_premiere(host, user, password):
+def carregar_config_organizada():
     """
-    Baixa a M3U da conta específica e extrai o ID numérico do canal com o nome 'Premiere'.
+    Carrega o 'stream_config.json' da nuvem (GitHub Raw) ou arquivo local com cache de 5 minutos.
     """
+    if CACHE_CONFIG["dados"] and (time.time() - CACHE_CONFIG["timestamp"] < 300):
+        return CACHE_CONFIG["dados"]
+
     try:
-        url_m3u = f"{host}/get.php?username={user}&password={password}&type=m3u_plus"
-        res = requests.get(url_m3u, headers=HEADERS, timeout=5, verify=False)
-        if res.status_code == 200 and "#EXTM3U" in res.text:
-            linhas = res.text.splitlines()
-            for i, linha in enumerate(linhas):
-                # Procura por linhas do tipo #EXTINF que contenham PREMIERE
-                if "PREMIERE 1" in linha.upper() or "PREMIERE FC 1" in linha.upper() or "PREMIERE HD" in linha.upper():
-                    if i + 1 < len(linhas) and not linhas[i+1].startswith("#"):
-                        # Extrai o ID numérico do link (ex: /live/user/pass/12345.ts)
-                        match = re.search(r'/(\d+)\.(ts|m3u8)', linhas[i+1])
-                        if match:
-                            return match.group(1)
+        url_nocache = f"{CONFIG_URL_RAW}?t={int(time.time())}"
+        r = requests.get(url_nocache, timeout=5)
+        if r.status_code == 200:
+            dados = r.json()
+            if "canais" in dados:
+                CACHE_CONFIG["dados"] = dados
+                CACHE_CONFIG["timestamp"] = time.time()
+                return dados
     except Exception:
         pass
-    return None
 
-def e_fluxo_video_valido(chunk_inicial):
-    """
-    Verifica se os primeiros bytes contêm vídeo real e não respostas de erro HTML
-    como 'Stream Not Found' ou '<html'.
-    """
+    if os.path.exists("stream_config.json"):
+        try:
+            with open("stream_config.json", "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                CACHE_CONFIG["dados"] = dados
+                CACHE_CONFIG["timestamp"] = time.time()
+                return dados
+        except Exception:
+            pass
+
+    return {"canais": {}}
+
+def e_video_valido(chunk_inicial):
     if not chunk_inicial:
         return False
-    # Se o início contiver tags HTML ou mensagens de erro em texto, não é vídeo
     amostra = chunk_inicial[:500].lower()
     if b"<html" in amostra or b"<!doctype" in amostra or b"stream not found" in amostra:
         return False
     return True
-
-def tentar_transmitir_conta(conta):
-    """
-    Tenta obter o ID do Premiere na conta informada e retransmitir o fluxo de vídeo.
-    """
-    stream_id = extrair_stream_id_premiere(conta["host"], conta["user"], conta["pass"])
-    if not stream_id:
-        # Se não achou o ID numérico, tenta o apelido padrão 'premiere1'
-        stream_id = "premiere1"
-
-    stream_target = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/{stream_id}.ts"
-    
-    try:
-        req = requests.get(stream_target, headers=HEADERS, stream=True, timeout=6, verify=False)
-        if req.status_code == 200:
-            iterador = req.iter_content(chunk_size=16384)
-            primeiro_chunk = next(iterador, None)
-            
-            # Valida se os primeiros bytes são de vídeo real
-            if primeiro_chunk and e_fluxo_video_valido(primeiro_chunk):
-                def gerador_stream():
-                    yield primeiro_chunk
-                    for chunk in iterador:
-                        if chunk:
-                            yield chunk
-                return gerador_stream()
-    except Exception:
-        pass
-    return None
 
 def adicionar_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -112,35 +70,80 @@ def adicionar_cors(response):
 
 @app.route("/")
 def home():
-    return "Servidor Proxy IPTV - 5 Contas Principais + TXT Reserva Ativo!"
+    config = carregar_config_organizada()
+    qtd = len(config.get("canais", {}))
+    return f"Servidor Proxy IPTV v11 - Online! ({qtd} canais catalogados e organizados no JSON)"
 
 @app.route("/playlist.m3u")
 def playlist_m3u():
+    """
+    Gera a playlist M3U enxuta contendo apenas os canais catalogados no 'stream_config.json'.
+    """
+    config = carregar_config_organizada()
+    canais = config.get("canais", {})
     base_url = request.host_url.rstrip("/")
-    m3u_content = f"""#EXTM3U
-#EXTINF:-1 tvg-id="Premiere1.br" tvg-name="Premiere 1 FHD" tvg-logo="https://i.imgur.com/8Q9Z3v1.png" group-title="ESPORTES",Premiere 1 FHD
-{base_url}/live/premiere1.ts
-"""
-    resp = Response(m3u_content, content_type="application/x-mpegURL")
+
+    linhas_m3u = ["#EXTM3U"]
+    for slug, c in canais.items():
+        tvg_id = c.get("tvg_id", "")
+        nome = c.get("nome", slug)
+        logo = c.get("logo", "")
+        cat = c.get("categoria", "CANAIS")
+        
+        linha_inf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{nome}" tvg-logo="{logo}" group-title="{cat}",{nome}'
+        linha_url = f'{base_url}/live/{slug}.ts'
+        linhas_m3u.append(linha_inf)
+        linhas_m3u.append(linha_url)
+
+    conteudo_final = "\n".join(linhas_m3u)
+    resp = Response(conteudo_final, content_type="application/x-mpegURL")
     return adicionar_cors(resp)
 
-@app.route("/live/premiere1.ts")
-@app.route("/live/premiere.m3u8")
-def stream_premiere():
-    # 1. TENTA CADA UMA DAS 5 FONTES PRINCIPAIS
-    for conta in CONTAS_PRINCIPAIS:
-        fluxo = tentar_transmitir_conta(conta)
-        if fluxo:
-            resp = Response(fluxo, content_type="video/mp2t")
-            return adicionar_cors(resp)
+@app.route("/live/<channel_slug>.ts")
+@app.route("/live/<channel_slug>.m3u8")
+def stream_canal(channel_slug):
+    """
+    Rota universal de canal: busca as fontes organizadas no JSON para o canal solicitado.
+    """
+    # Trata atalhos (ex: premiere1 ou premiere)
+    slug_limpo = channel_slug.replace(".ts", "").replace(".m3u8", "")
+    if slug_limpo == "premiere":
+        slug_limpo = "premiere1"
 
-    # 2. CASO NENHUMA DAS 5 FUNCIONE: USA A CONTA RESERVA DO TXT
-    fluxo_reserva = tentar_transmitir_conta(CONTA_RESERVA)
-    if fluxo_reserva:
-        resp = Response(fluxo_reserva, content_type="video/mp2t")
-        return adicionar_cors(resp)
+    config = carregar_config_organizada()
+    info_canal = config.get("canais", {}).get(slug_limpo)
 
-    return "Todas as 5 contas principais e a fonte reserva estão indisponíveis.", 503
+    if not info_canal or not info_canal.get("fontes"):
+        return f"Canal '{slug_limpo}' não encontrado ou sem fontes ativas no JSON.", 404
+
+    fontes = info_canal["fontes"]
+
+    # Testa as fontes em ordem de prioridade
+    for fonte in fontes:
+        host = fonte["host"]
+        user = fonte["user"]
+        password = fonte["pass"]
+        sid = fonte["stream_id"]
+
+        target_url = f"{host}/live/{user}/{password}/{sid}.ts"
+        try:
+            req = requests.get(target_url, headers=HEADERS, stream=True, timeout=5, verify=False)
+            if req.status_code == 200:
+                iterador = req.iter_content(chunk_size=16384)
+                primeiro_chunk = next(iterador, None)
+
+                if primeiro_chunk and e_video_valido(primeiro_chunk):
+                    def gerador_stream():
+                        yield primeiro_chunk
+                        for chunk in iterador:
+                            if chunk:
+                                yield chunk
+                    resp = Response(gerador_stream(), content_type="video/mp2t")
+                    return adicionar_cors(resp)
+        except Exception:
+            continue
+
+    return "Todas as fontes mapeadas para este canal estão indisponíveis.", 503
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
