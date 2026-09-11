@@ -9,15 +9,30 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# Pool expandido de contas M3U de alta estabilidade
-POOL_CONTAS = [
+# Pool Amplo e Diversificado de Contas extraídas de TODOS os arquivos .txt do projeto
+POOL_CONTAS_DIVERSIFICADO = [
+    # Server 1: meusrv.top
     {"nome": "meusrv_1", "host": "http://meusrv.top:80", "user": "955823677", "pass": "798597634"},
-    {"nome": "meusrv_2", "host": "http://meusrv.top:80", "user": "74468590", "pass": "448420959"},
-    {"nome": "ono_1", "host": "http://79.127.243.145:80", "user": "723015", "pass": "VfGrmD"},
+    {"nome": "meusrv_2", "host": "http://meusrv.top:80", "user": "567689135", "pass": "965722522"},
+    {"nome": "meusrv_3", "host": "http://meusrv.top:80", "user": "74468590", "pass": "448420959"},
+    # Server 2: assistirja.com
     {"nome": "assistirja_1", "host": "http://assistirja.com:80", "user": "p2WzY2", "pass": "WUr5m3"},
     {"nome": "assistirja_2", "host": "http://assistirja.com:80", "user": "mqKTBr4T7N", "pass": "1794PMUHjcsp"},
-    {"nome": "in89_1", "host": "http://in89.top:80", "user": "556181019000", "pass": "29344205462"},
-    {"nome": "biturl_reserva", "host": "http://play.biturl.vip:80", "user": "5181603291", "pass": "m23bm8a1nup"}
+    {"nome": "assistirja_3", "host": "http://assistirja.com:80", "user": "claudio0082x", "pass": "55052178"},
+    # Server 3: 79.127.243.145
+    {"nome": "ono_1", "host": "http://79.127.243.145:80", "user": "723015", "pass": "VfGrmD"},
+    # Server 4: 103.176.90.186
+    {"nome": "ip103_1", "host": "http://103.176.90.186:80", "user": "e0828d9135", "pass": "e91802270546"},
+    # Server 5: 61701-vector.cdn-o2.me
+    {"nome": "vector_1", "host": "http://61701-vector.cdn-o2.me:80", "user": "f5b51b97c6", "pass": "0svwmrhvnj"},
+    # Server 6: 654638.xyz
+    {"nome": "xyz654_1", "host": "http://654638.xyz:80", "user": "MAGNFPGZY1", "pass": "adhus0TkBW"},
+    # Server 7: 332nr7hbfu.xyz
+    {"nome": "xyz332_1", "host": "http://332nr7hbfu.xyz:80", "user": "bf99kmWd", "pass": "sGqE59"},
+    # Server 8: 966gaddn.com
+    {"nome": "gaddn_1", "host": "http://966gaddn.com:80", "user": "5FA57F9827964FF", "pass": "irn2ylrD61"},
+    # Server 9: play.biturl.vip
+    {"nome": "biturl_1", "host": "http://play.biturl.vip:80", "user": "5181603291", "pass": "m23bm8a1nup"}
 ]
 
 HEADERS = {
@@ -25,93 +40,89 @@ HEADERS = {
     "Accept": "*/*"
 }
 
-def adicionar_cors(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    return response
-
-@app.route("/")
-def home():
-    return "Servidor Proxy Premiere 1 - Exclusivo das Listas M3U (Filtro Anti-Cloudflare Ativo)!"
-
-@app.route("/debug")
-def debug():
-    """
-    Painel de diagnóstico em português sobre a saúde das contas do pool.
-    """
-    relatorio = [
-        "<h2>Diagnóstico de Saúde do Pool M3U (Premiere 1)</h2>",
-        "<p>Verificação de status e detecção de bloqueios em tempo real:</p><hr>"
-    ]
-    
-    for conta in POOL_CONTAS:
-        try:
-            url_test = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/premiere1.ts"
-            r = requests.get(url_test, headers=HEADERS, stream=True, timeout=4, verify=False)
-            if r.status_code == 200:
-                primeiro_bloco = next(r.iter_content(chunk_size=4096), b"")
-                amostra = primeiro_bloco.lower()
-                if b"cloudflare" in amostra or b"restricted" in amostra:
-                    status = "<span style='color:red;'>BLOQUEADO PELA CLOUDFLARE (Rejeitado)</span>"
-                elif b"<html" in amostra or b"stream not found" in amostra:
-                    status = "<span style='color:orange;'>ERRO HTML / CANAL INDISPONÍVEL</span>"
-                else:
-                    status = "<span style='color:green;'>ONLINE (Vídeo Real OK)</span>"
-            else:
-                status = f"<span style='color:orange;'>HTTP {r.status_code}</span>"
-            relatorio.append(f"<b>{conta['nome']}</b> ({conta['host']}): {status}<br>")
-        except Exception as e:
-            relatorio.append(f"<b>{conta['nome']}</b> ({conta['host']}): <span style='color:red;'>OFFLINE</span><br>")
-            
-    return "".join(relatorio)
-
-@app.route("/playlist.m3u")
-def playlist_m3u():
-    base_url = request.host_url.rstrip("/")
-    m3u_content = f"""#EXTM3U
-#EXTINF:-1 tvg-id="Premiere1.br" tvg-name="Premiere 1 FHD" tvg-logo="https://i.imgur.com/8Q9Z3v1.png" group-title="ESPORTES",Premiere 1 FHD
-{base_url}/live/premiere1.ts
-"""
-    resp = Response(m3u_content, content_type="application/x-mpegURL")
-    return adicionar_cors(resp)
-
-def validar_e_transmitir(target_url):
+def extrair_stream_id(host, user, password, termo="PREMIERE"):
     try:
-        req = requests.get(target_url, headers=HEADERS, stream=True, timeout=5, verify=False)
-        if req.status_code == 200:
-            iterador = req.iter_content(chunk_size=32768)
-            primeiro_chunk = next(iterador, None)
-            
-            if primeiro_chunk:
-                amostra = primeiro_chunk.lower()
-                # Descarta se contiver tela de erro da Cloudflare ou páginas HTML
-                if b"cloudflare" in amostra or b"restricted" in amostra or b"<html" in amostra or b"stream not found" in amostra:
-                    return None
-                
-                def gerador():
-                    yield primeiro_chunk
-                    for chunk in iterador:
-                        if chunk:
-                            yield chunk
-                return gerador()
+        url_m3u = f"{host}/get.php?username={user}&password={password}&type=m3u_plus"
+        r = requests.get(url_m3u, headers=HEADERS, timeout=4, verify=False)
+        if r.status_code == 200 and "#EXTM3U" in r.text:
+            linhas = r.text.splitlines()
+            for i, l in enumerate(linhas):
+                if termo in l.upper():
+                    if i + 1 < len(linhas) and not linhas[i+1].startswith("#"):
+                        m = re.search(r'/(\d+)\.(ts|m3u8)', linhas[i+1])
+                        if m:
+                            return m.group(1)
     except Exception:
         pass
     return None
 
+def e_chunk_valido_sem_cloudflare(chunk):
+    if not chunk or len(chunk) < 50:
+        return False
+    amostra = chunk[:1000].lower()
+    # Verifica assinaturas de erro da Cloudflare ou páginas HTML
+    bloqueios = [b"cloudflare", b"restricted", b"cfl.re", b"<html", b"<!doctype", b"stream not found", b"access denied"]
+    for b in bloqueios:
+        if b in amostra:
+            return False
+    return True
+
+def adicionar_cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    return resp
+
+@app.route("/")
+def home():
+    return "Servidor Proxy IPTV - Premiere 1 FHD (Pool Expandido Multi-Servidores)"
+
+@app.route("/playlist.m3u")
+def playlist():
+    base = request.host_url.rstrip("/")
+    m3u = f"""#EXTM3U
+#EXTINF:-1 tvg-id="Premiere1.br" tvg-name="Premiere 1 FHD" tvg-logo="https://i.imgur.com/8Q9Z3v1.png" group-title="ESPORTES",Premiere 1 FHD
+{base}/live/premiere1.ts
+"""
+    return adicionar_cors(Response(m3u, content_type="application/x-mpegURL"))
+
 @app.route("/live/premiere1.ts")
 @app.route("/live/premiere.m3u8")
-def stream_premiere():
-    # Testa em sequência o pool de contas M3U descartando bloqueios automaticamente
-    for conta in POOL_CONTAS:
-        # Tenta a rota direta do Premiere 1
-        url_direta = f"{conta['host']}/live/{conta['user']}/{conta['pass']}/premiere1.ts"
-        fluxo = validar_e_transmitir(url_direta)
-        if fluxo:
-            resp = Response(fluxo, content_type="video/mp2t")
-            return adicionar_cors(resp)
+def stream():
+    for c in POOL_CONTAS_DIVERSIFICADO:
+        stream_id = extrair_stream_id(c["host"], c["user"], c["pass"], "PREMIERE")
+        target_id = stream_id if stream_id else "premiere1"
+        url = f"{c['host']}/live/{c['user']}/{c['pass']}/{target_id}.ts"
+        
+        try:
+            req = requests.get(url, headers=HEADERS, stream=True, timeout=5, verify=False)
+            if req.status_code == 200:
+                it = req.iter_content(chunk_size=32768)
+                p_chunk = next(it, None)
+                if e_chunk_valido_sem_cloudflare(p_chunk):
+                    def gerador():
+                        yield p_chunk
+                        for chunk in it:
+                            if chunk:
+                                yield chunk
+                    return adicionar_cors(Response(gerador(), content_type="video/mp2t"))
+        except Exception:
+            continue
             
-    return "Todas as contas M3U do Premiere estão temporariamente indisponíveis.", 503
+    return "Nenhum servidor do pool entregou sinal limpo no momento.", 503
+
+@app.route("/debug")
+def debug():
+    html = ["<h2>Status em Tempo Real do Pool de Servidores M3U</h2><hr>"]
+    for c in POOL_CONTAS_DIVERSIFICADO:
+        try:
+            url = f"{c['host']}/live/{c['user']}/{c['pass']}/premiere1.ts"
+            r = requests.head(url, headers=HEADERS, timeout=3, verify=False)
+            status = f"<b style='color:green;'>ONLINE (HTTP {r.status_code})</b>" if r.status_code == 200 else f"<b style='color:orange;'>HTTP {r.status_code}</b>"
+        except Exception as e:
+            status = f"<b style='color:red;'>OFFLINE ({e})</b>"
+        html.append(f"<p>Servidor <b>{c['nome']}</b> ({c['host']}): {status}</p>")
+    return "".join(html)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
